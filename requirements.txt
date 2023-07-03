@@ -1,0 +1,2 @@
+SQLAlchemy==2.0.17
+typing_extensions==4.7.0
