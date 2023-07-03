@@ -24,8 +24,8 @@ COMMANDS_CALL = "       self._controls['{control}'].configure(command=self.{comm
 
 MENUS_FUNC = '''\
 def init_menus_command(self) -> None:
-    """Assign methods to the controls, stored in the attribute '_controls'."""
-    if hasattr(self, '_controls'):
+    """Assign methods to the controls, stored in the attribute '_menus'."""
+    if hasattr(self, '_menus'):
 {calls}
 '''
 MENUS_CALL = "      self._menus['{control}'].entryconfig('{action}', command=self.{command})"

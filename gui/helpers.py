@@ -24,10 +24,11 @@ class ServiceResult:
         return self.is_ok
 
     def show_message(self) -> None:
-        if self.is_ok:
-            messagebox.showinfo(message=self.message)
-        else:
-            messagebox.showerror(message=self.message)
+        if self.message:
+            if self.is_ok:
+                messagebox.showinfo(message=self.message)
+            else:
+                messagebox.showerror(message=self.message)
 
 
 def on_error(message: str) -> _.Callable:
