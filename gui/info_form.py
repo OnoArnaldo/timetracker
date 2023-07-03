@@ -4,20 +4,12 @@ from tkinter import ttk, messagebox
 from datetime import datetime
 
 import models as m
-from db import get_db
-from .utils import with_modifiers, command, bind
 import utils
+from db import get_db
+from .modifiers import with_modifiers, command, bind
+from .helpers import on_error, ServiceResult, OnErrorResult
 
 ListenerType = _.Callable[[str, 'TaskRow'], None]
-
-
-class ServiceResult:
-    def __init__(self, value: bool, record_id: int = None) -> None:
-        self.value = value
-        self.record_id = record_id
-
-    def __bool__(self) -> bool:
-        return self.value
 
 
 @with_modifiers
@@ -131,16 +123,17 @@ class EntryRow(tk.Frame):
     # endregion
 
     # region Services
-    def delete_entry(self, entry_id: int) -> ServiceResult:
+    @on_error('Failed to delete the entry')
+    def delete_entry(self, entry_id: int) -> OnErrorResult:
         with get_db().session() as session:
             if entry := m.TaskEntry.find(entry_id):
                 session.delete(entry)
-                return ServiceResult(True, entry_id)
+                return entry_id
 
-        messagebox.showerror('Failed to delete', 'Failed to delete the entry.')
-        return ServiceResult(False)
+        return False, entry_id, 'Failed to delete the entry.'
 
-    def save_entry(self, entry_id: int, task_id: int, start: datetime, stop: datetime) -> ServiceResult:
+    @on_error('Failed to save the entry.')
+    def save_entry(self, entry_id: int, task_id: int, start: datetime, stop: datetime) -> OnErrorResult:
         with get_db().session() as session:
             entry = m.TaskEntry.find(entry_id) or m.TaskEntry(task_id=task_id)
             entry.manual = True
@@ -148,7 +141,9 @@ class EntryRow(tk.Frame):
             entry.stop = stop
 
             session.add(entry)
-            return ServiceResult(True, entry.id)
+            return entry.id
+    # endregion
+
     # region Events
     @command(BT_SAVE)
     def clicked_save(self) -> None:
@@ -164,12 +159,15 @@ class EntryRow(tk.Frame):
         time = self._variables[self.STOP_TIME].get()
         stop = datetime.strptime(f'{date} {time}', '%d-%m-%Y %H:%M:%S')
 
+        result: ServiceResult
         if result := self.save_entry(entry_id, task_id, start, stop):
             with get_db().session():
                 self.model = m.TaskEntry.find(result.record_id)
 
             self.refresh_values()
             self.refresh()
+
+        result.show_message()
 
         if callable(self.listener):
             self.listener('save', self)
@@ -180,10 +178,13 @@ class EntryRow(tk.Frame):
             entry_id = self.model.id
 
         if messagebox.askyesno('Delete row', 'Do you want to delete the entry?'):
-            if self.delete_entry(entry_id):
+            result: ServiceResult
+            if result := self.delete_entry(entry_id):
                 self.model = None
                 self.refresh_values()
                 self.refresh()
+
+            result.show_message()
 
         if callable(self.listener):
             self.listener('delete', self)

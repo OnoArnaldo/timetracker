@@ -7,8 +7,9 @@ from tkinter import ttk, messagebox, simpledialog
 import models as m
 from db import get_db
 
-from .utils import with_modifiers, command, bind, menu
+from .modifiers import with_modifiers, command, bind, menu
 from .info_form import TaskInfoForm
+from .helpers import on_error, OnErrorResult, ServiceResult
 
 ListenerType = _.Callable[[str, 'TaskRow'], None]
 
@@ -156,15 +157,15 @@ class TaskRow(ttk.Frame):
             self.refresh_timers()
             self._play_id = self.after(1000, self.run_timer)
 
-    def delete_task(self, project_id: int, name: str) -> bool:
+    @on_error('Failed to delete the task')
+    def delete_task(self, project_id: int, name: str) -> OnErrorResult:
         with get_db().session() as session:
             if task := m.Task.find_name(project_id, name):
                 task.state = m.State.DELETED
                 session.add(task)
-                return True
+                return task.id
 
-        messagebox.showerror('Failed to delete', f'Failed to delete task {name!r}')
-        return False
+        return False, 0, f'Failed to delete task {name!r}'
     # endregion
 
     # region Events
@@ -202,10 +203,13 @@ class TaskRow(ttk.Frame):
             task_name = self.model.name
 
         if messagebox.askyesno('Delete task', f'Do you want to delete the task {task_name}'):
-            if self.delete_task(project_id, task_name):
+            result: ServiceResult
+            if result := self.delete_task(project_id, task_name):
                 self.model = None
                 self.refresh_values()
                 self.refresh()
+
+            result.show_message()
 
         if self.listener is not None:
             self.listener('delete', self)
@@ -245,7 +249,6 @@ class MainForm(ttk.Frame):
         self.refresh_projects()
 
     # region Build
-
     def build(self) -> None:
         self.root.title('Time tracker')
 
@@ -353,34 +356,35 @@ class MainForm(ttk.Frame):
     # endregion
 
     # region Services
-    def create_project(self, name: str) -> bool:
+    @on_error('Failed to create project')
+    def create_project(self, name: str) -> OnErrorResult:
         with get_db().session() as session:
             if m.Project.find_name(name) is None:
-                session.add(m.Project(name=name))
-                return True
+                project = m.Project(name=name)
+                session.add(project)
+                return project.id
 
-        messagebox.showerror('Cannot create project', f'The project name {name!r} already exists.')
-        return False
+        return False, 0, f'The project name {name!r} already exists.'
 
-    def edit_project(self, old_name: str, new_name: str) -> bool:
+    @on_error('Failed to edit project')
+    def edit_project(self, old_name: str, new_name: str) -> OnErrorResult:
         with get_db().session() as session:
             if (m.Project.find_name(new_name) is None) and (project := m.Project.find_name(old_name)):
                 project.name = new_name
                 session.add(project)
-                return True
+                return project.id
 
-        messagebox.showerror('Failed to edit project', f'Failed to change project {old_name!r} to {new_name!r}')
-        return False
+        return False, 0, f'Failed to change project {old_name!r} to {new_name!r}'
 
-    def delete_project(self, name: str) -> bool:
+    @on_error('Failed to delete project')
+    def delete_project(self, name: str) -> OnErrorResult:
         with get_db().session() as session:
             if project := m.Project.find_name(name):
                 project.state = m.State.DELETED
                 session.add(project)
-                return True
+                return project.id
 
-        messagebox.showerror('Failed to delete project', f'Failed to delete the project {name!r}')
-        return False
+        return False, 0, f'Failed to delete the project {name!r}'
 
     def select_project(self, name: str) -> bool:
         if name == '':
@@ -397,15 +401,15 @@ class MainForm(ttk.Frame):
         messagebox.showerror('Project not found', f'Project {name!r} was not found.')
         return False
 
-    def add_task(self, project_id: int, name: str) -> bool:
+    @on_error('Failed to add task')
+    def add_task(self, project_id: int, name: str) -> OnErrorResult:
         with get_db().session() as session:
             if m.Task.find_name(project_id, name) is None:
                 task = m.Task(project_id=project_id, name=name)
                 session.add(task)
-                return True
+                return task.id
 
-        messagebox.showerror('Failed to create task', f'Failed to create the task {name!r}.')
-        return False
+        return False, 0, f'Failed to create the task {name!r}.'
     # endregion
 
     # region Events
@@ -415,9 +419,12 @@ class MainForm(ttk.Frame):
             project_id = self._cur_project.id
 
         task_name = self._variables[self.TASK].get()
-        if self.add_task(project_id, task_name):
+        result: ServiceResult
+        if result := self.add_task(project_id, task_name):
             self._variables[self.TASK].set('')
             self.refresh_grid()
+
+        result.show_message()
 
     @bind('<KeyRelease>', TASK)
     def key_released_task(self, event: tk.Event) -> None:
@@ -431,9 +438,13 @@ class MainForm(ttk.Frame):
     @menu(MN_PROJECT, 'New project')
     def clicked_new_project(self) -> None:
         if (project_name := simpledialog.askstring('New project', 'New project name:')) is not None:
-            if project_name != '' and self.create_project(project_name):
-                self.select_project(project_name)
-                self.refresh_all()
+            if project_name != '':
+                result: ServiceResult
+                if result := self.create_project(project_name):
+                    self.select_project(project_name)
+                    self.refresh_all()
+
+                result.show_message()
 
     @menu(MN_PROJECT, 'Edit project')
     def clicked_edit_project(self) -> None:
@@ -446,9 +457,13 @@ class MainForm(ttk.Frame):
                 initialvalue=cur_project_name
         )) is not None:
 
-            if project_name != cur_project_name and self.edit_project(cur_project_name, project_name):
-                self.select_project(project_name)
-                self.refresh_all()
+            if project_name != cur_project_name:
+                result: ServiceResult
+                if result := self.edit_project(cur_project_name, project_name):
+                    self.select_project(project_name)
+                    self.refresh_all()
+
+                result.show_message()
 
     @menu(MN_PROJECT, 'Delete project')
     def clicked_delete_project(self) -> None:
@@ -457,8 +472,10 @@ class MainForm(ttk.Frame):
 
         if messagebox.askyesno('Delete project',
                                f'Are you sure you want to delete the project {cur_project_name!r}'):
-            if self.delete_project(cur_project_name):
+            result: ServiceResult
+            if result := self.delete_project(cur_project_name):
                 self.select_project('')
                 self.refresh_all()
 
+            result.show_message()
     # endregion

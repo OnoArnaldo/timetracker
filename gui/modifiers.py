@@ -4,6 +4,7 @@ from functools import wraps
 if _.TYPE_CHECKING:
     from tkinter import Event, ttk
 
+SelfType = _.NewType('SelfType', _.Any)
 
 BINDERS_FUNC = '''\
 def init_binders(self) -> None:
@@ -119,7 +120,7 @@ def bind(event: str, control: str) -> _.Callable:
     :param control: reference to a tk widget stored in the attribute _control in the class instance.
     :return: the wrapper
     """
-    def _bind(func: _.Callable[[_.Any, 'Event'], None]) -> _.Callable:
+    def _bind(func: _.Callable[[SelfType, 'Event'], None]) -> _.Callable:
         @wraps(func)
         def __bind(self, the_event: 'Event') -> _.Any:
             return func(self, the_event)
@@ -138,7 +139,7 @@ def command(control: str) -> _.Callable:
     :param control: reference to a tk widget stored in the attribute _control in the class instance.
     :return: the wrapper
     """
-    def _command(func: _.Callable[[_.Any], None]) -> _.Callable:
+    def _command(func: _.Callable[[SelfType], None]) -> _.Callable:
         @wraps(func)
         def __command(self) -> _.Any:
             return func(self)
@@ -151,7 +152,7 @@ def command(control: str) -> _.Callable:
 
 
 def menu(control: str, action: str) -> _.Callable:
-    def _menu(func: _.Callable[[_.Any], None]) -> _.Callable:
+    def _menu(func: _.Callable[[SelfType], None]) -> _.Callable:
         @wraps(func)
         def __menu(self) -> _.Any:
             return func(self)

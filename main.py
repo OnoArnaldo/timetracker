@@ -1,5 +1,4 @@
 from pathlib import Path
-import gui
 import models
 import db
 from gui.main_form import MainForm
