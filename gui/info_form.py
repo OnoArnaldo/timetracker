@@ -141,6 +141,8 @@ class EntryRow(tk.Frame):
             entry.stop = stop
 
             session.add(entry)
+
+        with get_db().session():
             return entry.id
     # endregion
 
@@ -336,15 +338,15 @@ class TaskInfoForm(tk.Toplevel):
         self._grid.append(entry_row)
         return True
 
-    def save_task(self, task_id: int, task_name: str) -> bool:
+    @on_error('Failed to save task')
+    def save_task(self, task_id: int, task_name: str) -> OnErrorResult:
         with get_db().session() as session:
             if entry := m.Task.find(task_id):
                 entry.name = task_name
                 session.add(entry)
-                return True
+                return task_id
 
-        messagebox.showerror('Failed to save task', 'Failed to save the task.')
-        return False
+        return False, task_id, 'Failed to save the task.'
     # endregion
 
     # region Events
@@ -363,6 +365,8 @@ class TaskInfoForm(tk.Toplevel):
 
         task_name = self._variables[self.NAME].get()
 
-        if self.save_task(task_id, task_name):
+        result: ServiceResult
+        if result := self.save_task(task_id, task_name):
             self.refresh_values()
+        result.show_message()
     # endregion
