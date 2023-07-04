@@ -23,12 +23,6 @@ cd <THE-PROJECT-DIR>
 ```
 
 
-## Todo:
-
-* Propagate changes made in the models to all the forms
-* OnError decorator
-
-
 # TKinter Design
 
 * the class should extend Frame or TopLevel (or anything that works as a "box").
